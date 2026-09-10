@@ -21,7 +21,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: course.prafdin.space
-          username: vboxuser
+          username: qzm
           port: 3149
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
