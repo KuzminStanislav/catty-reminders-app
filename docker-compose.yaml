@@ -1,17 +1,35 @@
 services:
-  db:
-    image: mariadb:11
-    container_name: catty-db
-    restart: always
+  app:
+    image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8181:8181"
+    env_file:
+      - .env
     environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-catty_reminders}
-      MARIADB_USER: catty
-      MARIADB_PASSWORD: cattypass
-      MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
-      MYSQL_DATABASE: ${MARIADB_DATABASE:-catty_reminders}
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_USER=catty
+      - MYSQL_PASSWORD=cattypass
+      - MYSQL_DATABASE=catty_reminders
+      - DEPLOY_REF=${DEPLOY_REF}
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./reminder_db.json:/app/reminder_db.json
+    networks:
+      - app-network
+
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_USER: catty
       MYSQL_PASSWORD: cattypass
+      MYSQL_DATABASE: catty_reminders
     healthcheck:
       test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized || mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
       interval: 3s
@@ -19,35 +37,13 @@ services:
       retries: 10
       start_period: 10s
     volumes:
-      - db_data:/var/lib/mysql
+      - db-data:/var/lib/mysql
     networks:
-      - catty-network
-
-  catty-app:
-    image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
-    container_name: ${APP_CONTAINER_NAME:-catty-app}
-    restart: always
-    environment:
-      - DEPLOY_REF=${DEPLOY_REF}
-      - MYSQL_HOST=db
-      - MYSQL_PORT=3306
-      - MYSQL_USER=catty
-      - MYSQL_PASSWORD=cattypass
-      - MYSQL_DATABASE=${MARIADB_DATABASE:-catty_reminders}
-    ports:
-      - "${HOST_APP_PORT:-8181}:${CONTEINER_APP_PORT:-8181}"
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./reminder_db.json:/app/reminder_db.json
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - catty-network
-
-networks:
-  catty-network:
-    driver: bridge
+      - app-network
 
 volumes:
-  db_data:
+  db-data:
+
+networks:
+  app-network:
+    driver: bridge
