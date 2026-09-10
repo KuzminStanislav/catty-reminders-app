@@ -15,7 +15,6 @@ services:
       - MYSQL_USER=catty
       - MYSQL_PASSWORD=cattypass
       - MYSQL_DATABASE=catty_reminders
-      - DEPLOY_REF=${DEPLOY_REF}
     volumes:
       - ./config.json:/app/config.json:ro
       - ./reminder_db.json:/app/reminder_db.json
