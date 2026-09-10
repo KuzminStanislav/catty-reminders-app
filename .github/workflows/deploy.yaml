@@ -13,27 +13,37 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'release' || github.event.workflow_run.conclusion == 'success' }}
+
     steps:
+      - uses: actions/checkout@v4
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: course.prafdin.space
-          port: 3149
           username: vboxuser
+          port: 3149
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
           script: |
             set -e
+
             cd /home/vboxuser/catty-reminders-app
 
             TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
 
             export DEPLOY_REF="$TARGET_SHA"
             export IMAGE="ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA"
+            
+            export APP_CONTAINER_NAME="catty-app"
+            export MYSQL_ROOT_PASSWORD="rootpass"
+            export MYSQL_DATABASE="catty_reminders"
+            export MYSQL_USER="catty"
+            export MYSQL_PASSWORD="cattypass"
+            export HOST_APP_PORT="8181"
+            export CONTEINER_APP_PORT="8181"
 
-            echo "IMAGE=$IMAGE" > .env
-            echo "DEPLOY_REF=$DEPLOY_REF" >> .env
-
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u kuzminstanislav --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io \
+              -u "${{ github.actor }}" \
+              --password-stdin
 
             sudo -E docker compose up -d --pull always --remove-orphans --force-recreate

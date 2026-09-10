@@ -1,49 +1,42 @@
 services:
-  app:
-    image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "8181:8181"
-    env_file:
-      - .env
+  db:
+    image: mysql:8.0
+    container_name: catty-db
+    restart: always
     environment:
-      - MYSQL_HOST=db
-      - MYSQL_PORT=3306
-      - MYSQL_USER=catty
-      - MYSQL_PASSWORD=cattypass
-      - MYSQL_DATABASE=catty_reminders
-      - DEPLOY_REF=${DEPLOY_REF}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - catty-network
+
+  catty-app:
+    image: ${IMAGE}
+    container_name: ${APP_CONTAINER_NAME}
+    restart: always
+    environment:
+      DEPLOY_REF: ${DEPLOY_REF}
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "${HOST_APP_PORT}:${CONTEINER_APP_PORT}"
     volumes:
       - ./config.json:/app/config.json:ro
       - ./reminder_db.json:/app/reminder_db.json
+    depends_on:
+      - db
     networks:
-      - app-network
-
-  db:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_USER: catty
-      MYSQL_PASSWORD: cattypass
-      MYSQL_DATABASE: catty_reminders
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-    volumes:
-      - db-data:/var/lib/mysql
-    networks:
-      - app-network
-
-volumes:
-  db-data:
+      - catty-network
 
 networks:
-  app-network:
+  catty-network:
     driver: bridge
+
+volumes:
+  db_data:
