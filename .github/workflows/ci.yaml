@@ -24,12 +24,19 @@ jobs:
 
     services:
       db:
-        image: mariadb:11.8.6-ubi9
+        image: mysql:8.0
         env:
-          MARIADB_ROOT_PASSWORD: mypass
-          MARIADB_DATABASE: catty_reminders
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: catty_reminders
+          MYSQL_USER: catty
+          MYSQL_PASSWORD: cattypass
         ports:
           - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -u root -prootpass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
       - uses: actions/checkout@v4
