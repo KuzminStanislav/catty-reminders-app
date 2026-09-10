@@ -1,19 +1,13 @@
-name: CD
+name: Deploy
 
 on:
-  release:
-    types: [published]
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches:
-      - '**'
+  push:
+    branches: [ lab4* ]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'release' || github.event.workflow_run.conclusion == 'success' }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -29,22 +23,26 @@ jobs:
 
             cd /home/qzm/Desktop/catty-reminders-app
 
-            TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+            TARGET_SHA="${{ github.sha }}"
+            OWNER=$(echo "${{ github.repository_owner }}" | tr "[:upper:]" "[:lower:]")
 
             export DEPLOY_REF="$TARGET_SHA"
-            export IMAGE="ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA"
+            export IMAGE="ghcr.io/$OWNER/catty-reminders-app:$TARGET_SHA"
+
             export APP_CONTAINER_NAME="catty-app"
+            export DB_CONTAINER_NAME="catty-db"
+
             export MYSQL_ROOT_PASSWORD="rootpass"
             export MYSQL_DATABASE="catty_reminders"
             export MYSQL_USER="catty"
             export MYSQL_PASSWORD="cattypass"
+
             export HOST_APP_PORT="8181"
             export CONTEINER_APP_PORT="8181"
+            export HOST_DB_PORT="3306"
+            export CONTEINER_DB_PORT="3306"
 
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io \
-              -u "${{ github.actor }}" \
-              --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
             sudo -E docker compose down -v || true
-
             sudo -E docker compose up -d --pull always --remove-orphans --force-recreate
