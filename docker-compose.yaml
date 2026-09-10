@@ -1,49 +1,53 @@
 services:
-  app:
-    image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "8181:8181"
-    env_file:
-      - .env
-    environment:
-      - MYSQL_HOST=db
-      - MYSQL_PORT=3306
-      - MYSQL_USER=catty
-      - MYSQL_PASSWORD=cattypass
-      - MYSQL_DATABASE=catty_reminders
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./reminder_db.json:/app/reminder_db.json
-    networks:
-      - app-network
-
   db:
-    image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
-    restart: unless-stopped
+    image: mariadb:11
+    container_name: catty-db
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-catty_reminders}
+      MARIADB_USER: catty
+      MARIADB_PASSWORD: cattypass
+      MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MARIADB_DATABASE:-catty_reminders}
       MYSQL_USER: catty
       MYSQL_PASSWORD: cattypass
-      MYSQL_DATABASE: catty_reminders
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized || mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 10
       start_period: 10s
     volumes:
-      - db-data:/var/lib/mysql
+      - db_data:/var/lib/mysql
     networks:
-      - app-network
+      - catty-network
 
-volumes:
-  db-data:
+  catty-app:
+    image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
+    container_name: ${APP_CONTAINER_NAME:-catty-app}
+    restart: always
+    environment:
+      - DEPLOY_REF=${DEPLOY_REF}
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_USER=catty
+      - MYSQL_PASSWORD=cattypass
+      - MYSQL_DATABASE=${MARIADB_DATABASE:-catty_reminders}
+    ports:
+      - "${HOST_APP_PORT:-8181}:${CONTEINER_APP_PORT:-8181}"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./reminder_db.json:/app/reminder_db.json
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - catty-network
 
 networks:
-  app-network:
+  catty-network:
     driver: bridge
+
+volumes:
+  db_data:

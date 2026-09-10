@@ -13,6 +13,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'release' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -36,20 +39,23 @@ jobs:
 
             git fetch origin
             git checkout lab4 || true
+            git reset --hard origin/lab4 || true
 
             git update-index --assume-unchanged reminder_db.json || true
 
-            git pull origin lab4 || true
-
             TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
 
-            echo "IMAGE=ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA" > .env
+            touch .env
+            sed -i '/^IMAGE=/d' .env
+            sed -i '/^DEPLOY_REF=/d' .env
+            echo "IMAGE=ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA" >> .env
+            echo "DEPLOY_REF=$TARGET_SHA" >> .env
 
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u kuzminstanislav --password-stdin
 
-            sudo docker compose pull app
+            sudo docker compose pull catty-app
 
-            sudo docker compose --env-file .env up -d
+            sudo docker compose up -d --force-recreate catty-app
 
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8181/ >/dev/null || curl -s http://127.0.0.1:8181/login | grep -q "Method Not Allowed" || curl -I http://127.0.0.1:8181/login 2>&1 | grep -q "405"; then
@@ -61,5 +67,5 @@ jobs:
             done
 
             echo "App failed to start"
-            sudo docker compose logs app
+            sudo docker compose logs catty-app
             exit 1
