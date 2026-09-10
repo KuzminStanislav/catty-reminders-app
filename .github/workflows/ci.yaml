@@ -22,6 +22,8 @@ jobs:
         image: mariadb:10.11
         env:
           MYSQL_ROOT_PASSWORD: mypass
+          MYSQL_USER: catty
+          MYSQL_PASSWORD: cattypass
           MYSQL_DATABASE: catty_reminders
         ports:
           - 3306:3306
@@ -34,8 +36,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -94,4 +94,3 @@ jobs:
           tags: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
           build-args: |
             DEPLOY_REF=${{ github.sha }}
-
