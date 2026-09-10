@@ -27,7 +27,7 @@ jobs:
           script: |
             set -e
 
-            cd /home/qzm/catty-reminders-app
+            cd /home/qzm/Desktop/catty-reminders-app
 
             TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
 
