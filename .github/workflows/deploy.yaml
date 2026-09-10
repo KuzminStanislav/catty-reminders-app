@@ -34,10 +34,15 @@ jobs:
             fi
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
             
+            # Сбрасываем локальные изменения reminder_db.json, чтобы git pull мог обновить данные
+            git update-index --no-assume-unchanged reminder_db.json || true
+            git checkout -- reminder_db.json || true
+            git reset --hard HEAD
+            
             git fetch origin
-            git checkout lab4 || true
-            git update-index --assume-unchanged reminder_db.json || true
-            git pull origin lab4 || true
+            BRANCH_NAME="${{ github.event.workflow_run.head_branch || 'lab4' }}"
+            git checkout "$BRANCH_NAME" || git checkout lab4 || true
+            git pull origin "$BRANCH_NAME" || git pull origin lab4 || true
             
             TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
             
@@ -47,7 +52,7 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u kuzminstanislav --password-stdin
             
             sudo docker compose pull app
-            sudo docker compose --env-file .env up -d app
+            sudo docker compose up -d --force-recreate app
             
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:8181/ >/dev/null || curl -s http://127.0.0.1:8181/login | grep -q "Method Not Allowed" || curl -I http://127.0.0.1:8181/login 2>&1 | grep -q "405"; then
