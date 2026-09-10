@@ -3,61 +3,62 @@ name: CI
 on:
   push:
     branches:
-      - '**'
+      - 'lab4*'
+  pull_request:
+    branches:
+      - 'lab4*'
 
 jobs:
-  test:
+  docker-lint:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Hadolint
+        run: docker run --rm -i hadolint/hadolint hadolint - < Dockerfile
+
+  tests:
+    needs: docker-lint
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: mariadb:11.8.6-ubi9
+        env:
+          MARIADB_ROOT_PASSWORD: mypass
+          MARIADB_DATABASE: catty_reminders
+        ports:
+          - 3306:3306
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt uvicorn pytest-playwright
-          playwright install --with-deps chromium
+          pip install -r requirements.txt
+          pip install uvicorn pytest-playwright
+          playwright install chromium
 
-      - name: Prepare configuration files for build
+      - name: Patch config for CI
         run: |
-          echo '{"db_path": "reminder_db.json", "db_config": {"host": "db", "port": 3306, "user": "catty", "password": "cattypass", "database": "catty_reminders"}, "secret_key": "Cats are awesome!", "users": {"heisenberg": "P@ssw0rd", "tester": "foobar123"}}' > config.json
-          echo '{"reminder_lists": {}}' > reminder_db.json
+          sed -i 's/"host": "db"/"host": "127.0.0.1"/g' config.json
 
-      - name: Build Docker image for testing
+      - name: Start app
         run: |
-          docker build --build-arg DEPLOY_REF=${{ github.sha }} -t catty-test .
-
-      - name: Run MySQL container
-        run: |
-          docker run -d \
-            --name mysql-test \
-            -e MYSQL_ROOT_PASSWORD=rootpass \
-            -e MYSQL_USER=catty \
-            -e MYSQL_PASSWORD=cattypass \
-            -e MYSQL_DATABASE=catty_reminders \
-            -p 3306:3306 \
-            mysql:8.0
-          sleep 15
-
-      - name: Run app container
-        run: |
-          docker run -d \
-            --name app-test \
-            --link mysql-test:db \
-            -e MYSQL_HOST=mysql-test \
-            -e MYSQL_USER=catty \
-            -e MYSQL_PASSWORD=cattypass \
-            -e MYSQL_DATABASE=catty_reminders \
-            -p 8181:8181 \
-            catty-test
-          sleep 5
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8181 &
+          sleep 10
 
       - name: Run tests
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          pytest --junitxml=test_result.xml
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest --junitxml=test_result.xml
 
       - name: Upload results
         if: always()
@@ -67,20 +68,25 @@ jobs:
           path: test_result.xml
 
   docker-build:
+    needs: tests
     runs-on: ubuntu-latest
-    needs: test
+
+    if: github.event_name == 'push'
+
     permissions:
+      contents: read
       packages: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare configuration files for build
+      - name: Prepare image name
+        id: prep
         run: |
-          echo '{"db_path": "reminder_db.json", "db_config": {"host": "db", "port": 3306, "user": "catty", "password": "cattypass", "database": "catty_reminders"}, "secret_key": "Cats are awesome!", "users": {"heisenberg": "P@ssw0rd", "tester": "foobar123"}}' > config.json
-          echo '{"reminder_lists": {}}' > reminder_db.json
+          echo "repo_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -91,10 +97,8 @@ jobs:
         with:
           context: .
           push: true
-          provenance: false
-          sbom: false
-          tags: |
-            ghcr.io/kuzminstanislav/catty-reminders-app:latest
-            ghcr.io/kuzminstanislav/catty-reminders-app:${{ github.sha }}
           build-args: |
             DEPLOY_REF=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ steps.prep.outputs.repo_lower }}:latest
+            ghcr.io/${{ steps.prep.outputs.repo_lower }}:${{ github.sha }}

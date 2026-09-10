@@ -1,17 +1,14 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
-    branches: [ lab4* ]
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,11 +24,9 @@ jobs:
 
             cd /home/qzm/Desktop/catty-reminders-app
 
-            TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
-            OWNER=$(echo "${{ github.repository_owner }}" | tr "[:upper:]" "[:lower:]")
+            OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
-            export DEPLOY_REF="$TARGET_SHA"
-            export IMAGE="ghcr.io/$OWNER/catty-reminders-app:$TARGET_SHA"
+            export IMAGE="ghcr.io/$OWNER/catty-reminders-app:${{ github.sha }}"
 
             export APP_CONTAINER_NAME="catty-app"
             export DB_CONTAINER_NAME="catty-db"
