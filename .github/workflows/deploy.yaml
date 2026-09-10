@@ -24,44 +24,16 @@ jobs:
           command_timeout: 30m
           script: |
             set -e
-            cd /home/vboxuser/catty-reminders-app || exit 1
-            
-            eval "$(ssh-agent -s)"
-            if [ -f /home/vboxuser/.ssh/id_rsa ]; then
-              ssh-add /home/vboxuser/.ssh/id_rsa
-            elif [ -f /home/vboxuser/.ssh/id_ed25519 ]; then
-              ssh-add /home/vboxuser/.ssh/id_ed25519
-            fi
-            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
-            
-            git fetch origin
-            git checkout lab4 || true
-            
-            git update-index --assume-unchanged reminder_db.json || true
-            git pull origin lab4 || true
-            
+            cd /home/vboxuser/catty-reminders-app
+
             TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
-            
-            echo "IMAGE=ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA" > .env
-            echo "DEPLOY_REF=$TARGET_SHA" >> .env
-            
-            echo '{"db_path": "reminder_db.json", "db_config": {"host": "db", "port": 3306, "user": "catty", "password": "cattypass", "database": "catty_reminders"}, "secret_key": "Cats are awesome!", "users": {"heisenberg": "P@ssw0rd", "tester": "foobar123"}}' > config.json
-            
+
+            export DEPLOY_REF="$TARGET_SHA"
+            export IMAGE="ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA"
+
+            echo "IMAGE=$IMAGE" > .env
+            echo "DEPLOY_REF=$DEPLOY_REF" >> .env
+
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u kuzminstanislav --password-stdin
-            
-            sudo docker compose pull app
-            
-            sudo docker compose --env-file .env up -d --force-recreate app
-            
-            for i in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:8181/ >/dev/null || curl -s http://127.0.0.1:8181/login | grep -q "Method Not Allowed" || curl -I http://127.0.0.1:8181/login 2>&1 | grep -q "405"; then
-                echo "App is healthy and responds correctly"
-                exit 0
-              fi
-              echo "Waiting for app... ($i/30)"
-              sleep 3
-            done
-            
-            echo "App failed to start"
-            sudo docker compose logs app
-            exit 1
+
+            sudo -E docker compose up -d --pull always --remove-orphans --force-recreate
