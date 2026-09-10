@@ -1,63 +1,100 @@
-name: CD
+name: CI
 
 on:
-  release:
-    types: [published]
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
     branches:
       - '**'
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'release' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          host: course.prafdin.space
-          port: 3149
-          username: vboxuser
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
-          script: |
-            set -e
-            cd /home/vboxuser/catty-reminders-app || exit 1
-            
-            eval "$(ssh-agent -s)"
-            if [ -f /home/vboxuser/.ssh/id_rsa ]; then
-              ssh-add /home/vboxuser/.ssh/id_rsa
-            elif [ -f /home/vboxuser/.ssh/id_ed25519 ]; then
-              ssh-add /home/vboxuser/.ssh/id_ed25519
-            fi
-            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
-            
-            TARGET_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
-            
-            git fetch origin
-            git update-index --no-assume-unchanged reminder_db.json || true
-            git reset --hard "$TARGET_SHA"
-            
-            echo "IMAGE=ghcr.io/kuzminstanislav/catty-reminders-app:$TARGET_SHA" > .env
-            echo "DEPLOY_REF=$TARGET_SHA" >> .env
-            export DEPLOY_REF="$TARGET_SHA"
-            
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u kuzminstanislav --password-stdin
-            
-            sudo docker compose pull app
-            sudo docker compose --env-file .env up -d --force-recreate app
-            
-            for i in $(seq 1 30); do
-              if curl -fsS http://127.0.0.1:8181/ >/dev/null || curl -s http://127.0.0.1:8181/login | grep -q "Method Not Allowed" || curl -I http://127.0.0.1:8181/login 2>&1 | grep -q "405"; then
-                echo "App is healthy and responds correctly"
-                exit 0
-              fi
-              echo "Waiting for app... ($i/30)"
-              sleep 3
-            done
-            
-            echo "App failed to start"
-            sudo docker compose logs app
-            exit 1
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt uvicorn pytest-playwright
+          playwright install --with-deps chromium
+
+      - name: Prepare configuration files for build
+        run: |
+          echo '{"db_path": "reminder_db.json", "db_config": {"host": "db", "port": 3306, "user": "catty", "password": "cattypass", "database": "catty_reminders"}, "secret_key": "Cats are awesome!", "users": {"heisenberg": "P@ssw0rd", "tester": "foobar123"}}' > config.json
+          echo '{"reminder_lists": {}}' > reminder_db.json
+
+      - name: Build Docker image for testing
+        run: |
+          docker build --build-arg DEPLOY_REF=${{ github.sha }} -t catty-test .
+
+      - name: Run MySQL container
+        run: |
+          docker run -d \
+            --name mysql-test \
+            -e MYSQL_ROOT_PASSWORD=rootpass \
+            -e MYSQL_USER=catty \
+            -e MYSQL_PASSWORD=cattypass \
+            -e MYSQL_DATABASE=catty_reminders \
+            -p 3306:3306 \
+            mysql:8.0
+          sleep 15
+
+      - name: Run app container
+        run: |
+          docker run -d \
+            --name app-test \
+            --link mysql-test:db \
+            -e MYSQL_HOST=mysql-test \
+            -e MYSQL_USER=catty \
+            -e MYSQL_PASSWORD=cattypass \
+            -e MYSQL_DATABASE=catty_reminders \
+            -p 8181:8181 \
+            catty-test
+          sleep 5
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          pytest --junitxml=test_result.xml
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_result
+          path: test_result.xml
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare configuration files for build
+        run: |
+          echo '{"db_path": "reminder_db.json", "db_config": {"host": "db", "port": 3306, "user": "catty", "password": "cattypass", "database": "catty_reminders"}, "secret_key": "Cats are awesome!", "users": {"heisenberg": "P@ssw0rd", "tester": "foobar123"}}' > config.json
+          echo '{"reminder_lists": {}}' > reminder_db.json
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ghcr.io/kuzminstanislav/catty-reminders-app:latest
+            ghcr.io/kuzminstanislav/catty-reminders-app:${{ github.sha }}
+          build-args: |
+            DEPLOY_REF=${{ github.sha }}

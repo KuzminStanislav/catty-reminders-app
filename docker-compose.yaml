@@ -22,7 +22,7 @@ services:
       - app-network
 
   db:
-    image: mariadb:10.11
+    image: mysql:8.0
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
@@ -30,7 +30,7 @@ services:
       MYSQL_PASSWORD: cattypass
       MYSQL_DATABASE: catty_reminders
     healthcheck:
-      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized || mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -ucatty -pcattypass || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 10
