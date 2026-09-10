@@ -17,8 +17,8 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: course.prafdin.ru
-          port: 3306
+          host: course.prafdin.space
+          port: 3149
           username: vboxuser
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 30m

@@ -45,7 +45,7 @@ jobs:
 
       - name: Temporary swap config for tests
         run: |
-          sed -i 's/"host": "db"/"host": "localhost"/' config.json
+          sed -i 's/"host": "db"/"host": "127.0.0.1"/' config.json
 
       - name: Install dependencies
         run: |
@@ -94,3 +94,4 @@ jobs:
           tags: ghcr.io/${{ env.REPO_LOWER }}:${{ github.sha }}
           build-args: |
             DEPLOY_REF=${{ github.sha }}
+
