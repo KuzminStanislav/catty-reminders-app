@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'lab4*'
+  pull_request:
+    branches:
+      - 'lab4*'
+
+jobs:
+  docker-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hadolint
+        run: docker run --rm -i hadolint/hadolint hadolint - < Dockerfile
+
+  tests:
+    needs: docker-lint
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: catty_reminders
+          MYSQL_USER: catty
+          MYSQL_PASSWORD: cattypass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -u root -prootpass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install uvicorn pytest-playwright
+          playwright install chromium
+
+      - name: Patch config for CI
+        run: |
+          sed -i 's/"host": "db"/"host": "127.0.0.1"/g' config.json
+
+      - name: Start app
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8181 &
+          sleep 10
+
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest --junitxml=test_result.xml
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_result
+          path: test_result.xml
+
+  docker-build:
+    needs: tests
+    runs-on: ubuntu-latest
+
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare image name
+        id: prep
+        run: |
+          echo "repo_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            DEPLOY_REF=${{ github.sha }}
+          tags: |
+            ghcr.io/${{ steps.prep.outputs.repo_lower }}:latest
+            ghcr.io/${{ steps.prep.outputs.repo_lower }}:${{ github.sha }}
