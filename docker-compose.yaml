@@ -12,6 +12,11 @@ services:
       - db_data:/var/lib/mysql
     networks:
       - catty-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   catty-app:
     image: ${IMAGE:-ghcr.io/kuzminstanislav/catty-reminders-app:latest}
@@ -25,14 +30,19 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-cattypass}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-catty_reminders}
     ports:
-      - "${HOST_APP_PORT:-8181}:${CONTEINER_APP_PORT:-8181}"
+      - "${HOST_APP_PORT:-8181}:${CONTAINER_APP_PORT:-8181}"
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./reminder_db.json:/app/reminder_db.json
+      - ./config.json:/catty-reminders-app/config.json:ro
+      - ./reminder_db.json:/catty-reminders-app/reminder_db.json
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - catty-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 networks:
   catty-network:

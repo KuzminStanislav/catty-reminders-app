@@ -25,23 +25,25 @@ jobs:
             cd /home/qzm/Desktop/catty-reminders-app
 
             OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            IMAGE_URL="ghcr.io/$OWNER/catty-reminders-app:${{ github.sha }}"
 
-            export IMAGE="ghcr.io/$OWNER/catty-reminders-app:${{ github.sha }}"
-
-            export APP_CONTAINER_NAME="catty-app"
-            export DB_CONTAINER_NAME="catty-db"
-
-            export MYSQL_ROOT_PASSWORD="rootpass"
-            export MYSQL_DATABASE="catty_reminders"
-            export MYSQL_USER="catty"
-            export MYSQL_PASSWORD="cattypass"
-
-            export HOST_APP_PORT="8181"
-            export CONTEINER_APP_PORT="8181"
-            export HOST_DB_PORT="3306"
-            export CONTEINER_DB_PORT="3306"
+            cat <<EOF > .env
+            IMAGE=$IMAGE_URL
+            APP_CONTAINER_NAME=catty-app
+            DB_CONTAINER_NAME=catty-db
+            MYSQL_ROOT_PASSWORD=rootpass
+            MYSQL_DATABASE=catty_reminders
+            MYSQL_USER=catty
+            MYSQL_PASSWORD=cattypass
+            HOST_APP_PORT=8181
+            CONTAINER_APP_PORT=8181
+            HOST_DB_PORT=3306
+            CONTAINER_DB_PORT=3306
+            DEPLOY_REF=${{ github.sha }}
+            EOF
 
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            sudo -E docker compose down -v || true
-            sudo -E docker compose up -d --pull always --remove-orphans --force-recreate
+            sudo docker compose down || true
+            
+            sudo docker compose up -d --pull always --remove-orphans --force-recreate
