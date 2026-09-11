@@ -85,7 +85,6 @@ jobs:
         with:
           path: pr
           ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
 
       - name: Validate JSON schema
         run: |
