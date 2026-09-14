@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ARG DEPLOY_REF
+ARG DEPLOY_REF=unknown
 ENV DEPLOY_REF=${DEPLOY_REF}
 
 EXPOSE 8181
